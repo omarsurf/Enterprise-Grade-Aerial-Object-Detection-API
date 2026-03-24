@@ -6,7 +6,6 @@ Validates local dataset/model manifests and the promoted metadata bundle.
 import argparse
 import sys
 from pathlib import Path
-from typing import List
 
 from common import ROOT_DIR
 
@@ -35,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def collect_model_manifest_paths() -> List[Path]:
+def collect_model_manifest_paths() -> list[Path]:
     paths = []
     for manifest_path in sorted(ARTIFACTS_DIR.glob("*/manifest.json")):
         if manifest_path.parent.name in {"datasets", "promoted"}:

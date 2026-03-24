@@ -5,7 +5,6 @@ Validates the local dataset layout and writes a reproducible dataset manifest.
 
 import argparse
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 from common import load_yaml_config, resolve_repo_path, write_yaml_config
 
@@ -32,11 +31,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def list_stems(directory: Path, suffixes: Tuple[str, ...]) -> List[str]:
+def list_stems(directory: Path, suffixes: tuple[str, ...]) -> list[str]:
     return sorted(path.stem for path in directory.iterdir() if path.suffix.lower() in suffixes)
 
 
-def ensure_label_alias(split_dir: Path, label_dir: Path) -> Dict[str, str]:
+def ensure_label_alias(split_dir: Path, label_dir: Path) -> dict[str, str]:
     """Creates a labels symlink next to YOLO image folders when possible."""
     alias_dir = split_dir / "labels"
 
@@ -50,7 +49,7 @@ def ensure_label_alias(split_dir: Path, label_dir: Path) -> Dict[str, str]:
         return {"labels_alias": str(label_dir), "labels_alias_status": "unavailable"}
 
 
-def validate_split(images_dir: Path, labels_dir: Path, split_name: str) -> Dict[str, object]:
+def validate_split(images_dir: Path, labels_dir: Path, split_name: str) -> dict[str, object]:
     if not images_dir.exists():
         raise FileNotFoundError(f"Images directory missing for {split_name}: {images_dir}")
     if not labels_dir.exists():
@@ -82,7 +81,7 @@ def validate_split(images_dir: Path, labels_dir: Path, split_name: str) -> Dict[
     }
 
 
-def build_ultralytics_data_file(dataset_cfg: Dict[str, object], dataset_dir: Path) -> Path:
+def build_ultralytics_data_file(dataset_cfg: dict[str, object], dataset_dir: Path) -> Path:
     processed_root = resolve_repo_path(str(dataset_cfg["processed_dir"]))
     train_images = resolve_repo_path(str(dataset_cfg["train_images"]))
     val_images = resolve_repo_path(str(dataset_cfg["val_images"]))

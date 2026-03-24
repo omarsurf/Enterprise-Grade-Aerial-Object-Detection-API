@@ -5,7 +5,7 @@ Evaluates a trained OBB model on the fixed validation split and refreshes run me
 
 import argparse
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from common import load_yaml_config, resolve_repo_path
 
@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def normalize_results_dict(results_dict: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_results_dict(results_dict: dict[str, Any]) -> dict[str, Any]:
     normalized = {}
     for key, value in results_dict.items():
         if isinstance(value, (int, float, str, bool)) or value is None:
@@ -49,7 +49,7 @@ def normalize_results_dict(results_dict: Dict[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
-def build_summary_from_results(results_dict: Dict[str, Any]) -> Dict[str, Any]:
+def build_summary_from_results(results_dict: dict[str, Any]) -> dict[str, Any]:
     return {
         "precision": round(float(results_dict.get("metrics/precision(B)", 0.0)), 4),
         "recall": round(float(results_dict.get("metrics/recall(B)", 0.0)), 4),
@@ -73,7 +73,7 @@ def main() -> None:
         raise FileNotFoundError(f"Run bundle incomplete for {run_id}: {run_dir}")
 
     manifest = read_json(manifest_path)
-    params = read_json(params_path)
+    read_json(params_path)
 
     if args.results_csv:
         results_csv = resolve_repo_path(args.results_csv)

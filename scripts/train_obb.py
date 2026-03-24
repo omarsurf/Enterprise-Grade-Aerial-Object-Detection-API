@@ -5,7 +5,7 @@ Runs a reproducible local YOLO OBB training job and records its artifacts.
 
 import argparse
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from common import load_yaml_config, resolve_repo_path
 
@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_dataset_manifest(data_cfg: Dict[str, Any]) -> Dict[str, Any]:
+def load_dataset_manifest(data_cfg: dict[str, Any]) -> dict[str, Any]:
     dataset_dir = get_dataset_dir(
         str(data_cfg["dataset"]["name"]),
         str(data_cfg["dataset"]["version"]),

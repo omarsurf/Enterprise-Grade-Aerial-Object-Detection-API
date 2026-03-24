@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
 """
 Runs a lightweight smoke inference against the promoted API surface.
 """
+
+from __future__ import annotations
+
 import argparse
 from unittest.mock import patch
 
+import numpy as np
 from common import load_yaml_config, resolve_repo_path
 
 
@@ -22,26 +24,24 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_sample_image(config: dict) -> np.ndarray:
-    import numpy as np  # noqa: E402
-
     smoke_cfg = config["smoke_test"]
     height = int(smoke_cfg["image_height"])
     width = int(smoke_cfg["image_width"])
     color = tuple(int(channel) for channel in smoke_cfg["background_bgr"])
     image = np.full((height, width, 3), color, dtype=np.uint8)
 
-    import cv2  # noqa: E402
+    import cv2
 
     cv2.rectangle(image, (250, 250), (500, 500), (180, 180, 180), -1)
     return image
 
 
 def run_mock_smoke_test(image: np.ndarray) -> None:
-    import cv2  # noqa: E402
-    from fastapi.testclient import TestClient  # noqa: E402
+    import cv2
+    from fastapi.testclient import TestClient
 
-    from app.main import app  # noqa: E402
-    from app.schemas import Detection, ModelInfoResponse, PredictionResponse  # noqa: E402
+    from app.main import app
+    from app.schemas import Detection, ModelInfoResponse, PredictionResponse
 
     mocked_prediction = PredictionResponse(
         image_width=image.shape[1],
@@ -99,8 +99,8 @@ def run_mock_smoke_test(image: np.ndarray) -> None:
 
 
 def run_real_smoke_test(image: np.ndarray) -> None:
-    from app.artifacts import build_model_info  # noqa: E402
-    from app.inference import detector  # noqa: E402
+    from app.artifacts import build_model_info
+    from app.inference import detector
 
     if not detector.is_loaded():
         detector.load_model()
