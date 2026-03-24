@@ -1,0 +1,57 @@
+{
+  "dataset": {
+    "class_names": [
+      "plane",
+      "ship",
+      "small-vehicle",
+      "large-vehicle"
+    ],
+    "description": "Four-class DOTA subset prepared for tiled YOLO OBB experiments.",
+    "filtered_dir": "data/filtered",
+    "name": "dota_obb_4class_tiled",
+    "processed_dir": "data/processed",
+    "raw_dir": "data/raw",
+    "train_images": "data/processed/split/train/images",
+    "train_labels": "data/processed/split/train/labelTxt",
+    "train_split_id": "processed-split-train",
+    "val_images": "data/processed/split/val/images",
+    "val_labels": "data/processed/split/val/labelTxt",
+    "val_split_id": "processed-split-val",
+    "version": "local-v1"
+  },
+  "inference": {
+    "confidence_threshold": 0.55,
+    "nms_iou_threshold": 0.5,
+    "overlap": 200,
+    "tile_size": 1024
+  },
+  "resolved": {
+    "initial_weights": "yolo11n-obb.pt",
+    "source_model_path": "runs_obb/dota_tiled_from_pretrained/weights/best_tiled.pt",
+    "training_output_dir": "runs_obb/dota_tiled_from_pretrained"
+  },
+  "run": {
+    "initial_weights": "yolo11n-obb.pt",
+    "prefix": "obb_tiled"
+  },
+  "training": {
+    "batch": 4,
+    "degrees": 45,
+    "deterministic": true,
+    "device": "cpu",
+    "epochs": 50,
+    "flipud": 0.5,
+    "fliplr": 0.5,
+    "imgsz": 1024,
+    "lr0": 0.001,
+    "lrf": 0.01,
+    "mosaic": 1.0,
+    "optimizer": "auto",
+    "patience": 15,
+    "pretrained": true,
+    "scale": 0.6,
+    "seed": 0,
+    "translate": 0.1,
+    "workers": 2
+  }
+}

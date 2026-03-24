@@ -1,0 +1,32 @@
+{
+  "confidence_threshold": 0.55,
+  "dataset_manifest_path": "artifacts/datasets/dota_obb_4class_tiled_local-v1/dataset_manifest.json",
+  "dataset_name": "dota_obb_4class_tiled",
+  "dataset_version": "local-v1",
+  "git_commit": "unknown",
+  "metrics_summary": {
+    "best_epoch": 17,
+    "mAP50": 0.8854,
+    "mAP50-95": 0.5744,
+    "precision": 0.8732,
+    "recall": 0.8354,
+    "source_results_csv": "runs_obb/dota_tiled_from_pretrained/results.csv"
+  },
+  "model_family": "ultralytics/yolo11n-obb",
+  "model_name": "best_tiled.pt",
+  "model_path": "models/best_tiled.pt",
+  "model_version": "dota_tiled_from_pretrained_local_v1",
+  "notes": "Backfilled from the existing tiled training run artifacts committed with the project.",
+  "overlap": 200,
+  "promoted_at": "2026-03-23T00:00:00+00:00",
+  "promoted_to_service": true,
+  "python_version": "unknown",
+  "run_id": "dota_tiled_from_pretrained_local_v1",
+  "source_model_path": "runs_obb/dota_tiled_from_pretrained/weights/best_tiled.pt",
+  "tile_size": 1024,
+  "train_split_id": "processed-split-train",
+  "training_date": "2026-03-23T00:00:00+00:00",
+  "training_output_dir": "runs_obb/dota_tiled_from_pretrained",
+  "ultralytics_version": "unknown",
+  "val_split_id": "processed-split-val"
+}

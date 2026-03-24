@@ -1,0 +1,43 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: aerial-obb-api:latest
+    container_name: aerial-obb-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro
+      - ./outputs:/app/outputs:rw
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - CONFIDENCE_THRESHOLD=0.55
+      - NMS_IOU_THRESHOLD=0.5
+      - TILE_SIZE=1024
+      - OVERLAP=200
+    restart: unless-stopped
+
+    # Resource limits to prevent OOM and CPU exhaustion
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 8G
+        reservations:
+          cpus: "2"
+          memory: 4G
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

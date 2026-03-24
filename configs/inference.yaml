@@ -1,0 +1,16 @@
+model:
+  promoted_model_path: models/best_tiled.pt
+
+inference:
+  tile_size: 1024
+  overlap: 200
+  confidence_threshold: 0.55
+  nms_iou_threshold: 0.5
+
+smoke_test:
+  image_width: 1024
+  image_height: 1024
+  background_bgr:
+    - 40
+    - 70
+    - 110

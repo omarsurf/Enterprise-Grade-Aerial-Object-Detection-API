@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-filesystem-server", "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api"],
+      "type": "stdio"
+    }
+  }
+}

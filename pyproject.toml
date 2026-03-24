@@ -1,0 +1,82 @@
+[project]
+name = "aerial-obb-api"
+version = "1.0.0"
+description = "FastAPI service for Oriented Bounding Box detection on aerial imagery using YOLO"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [
+    { name = "Omar Piro" }
+]
+keywords = ["yolo", "object-detection", "obb", "aerial-imagery", "fastapi", "computer-vision"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+
+dependencies = [
+    "fastapi>=0.109.0,<1.0.0",
+    "uvicorn[standard]>=0.27.0,<1.0.0",
+    "python-multipart>=0.0.6,<1.0.0",
+    "httpx>=0.25.0,<1.0.0",
+    "ultralytics>=8.1.0,<9.0.0",
+    "opencv-python>=4.9.0,<5.0.0",
+    "numpy>=1.24.0,<2.0.0",
+    "pydantic>=2.5.0,<3.0.0",
+    "PyYAML>=6.0.1,<7.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.25.0",
+    "ruff>=0.1.0",
+    "pre-commit>=3.5.0",
+    "Pillow>=10.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/omarpiro/aerial-obb-api"
+Documentation = "https://github.com/omarpiro/aerial-obb-api#readme"
+Repository = "https://github.com/omarpiro/aerial-obb-api"
+Issues = "https://github.com/omarpiro/aerial-obb-api/issues"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true

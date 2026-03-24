@@ -1,0 +1,15 @@
+{
+  "evaluation_mode": "backfilled_from_results_csv",
+  "evaluated_at": "2026-03-23T00:00:00+00:00",
+  "metrics_summary": {
+    "best_epoch": 17,
+    "mAP50": 0.8854,
+    "mAP50-95": 0.5744,
+    "precision": 0.8732,
+    "recall": 0.8354,
+    "source_results_csv": "runs_obb/dota_tiled_from_pretrained/results.csv"
+  },
+  "results_csv": "runs_obb/dota_tiled_from_pretrained/results.csv",
+  "run_id": "dota_tiled_from_pretrained_local_v1",
+  "weights_path": "runs_obb/dota_tiled_from_pretrained/weights/best_tiled.pt"
+}

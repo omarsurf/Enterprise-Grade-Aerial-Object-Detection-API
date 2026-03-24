@@ -1,0 +1,8 @@
+path: /Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed
+train: split/train/images
+val: split/val/images
+names:
+  0: plane
+  1: ship
+  2: small-vehicle
+  3: large-vehicle

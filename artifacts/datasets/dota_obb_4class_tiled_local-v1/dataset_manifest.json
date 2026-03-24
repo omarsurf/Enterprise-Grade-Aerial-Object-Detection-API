@@ -1,0 +1,46 @@
+{
+  "class_names": [
+    "plane",
+    "ship",
+    "small-vehicle",
+    "large-vehicle"
+  ],
+  "dataset_name": "dota_obb_4class_tiled",
+  "dataset_root": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed",
+  "dataset_version": "local-v1",
+  "description": "Four-class DOTA subset prepared for tiled YOLO OBB experiments.",
+  "filtered_dir": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/filtered",
+  "generated_at": "2026-03-23T22:57:53.381937+00:00",
+  "num_train_images": 125,
+  "num_val_images": 32,
+  "processed_dir": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed",
+  "raw_dir": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/raw",
+  "test_split_id": null,
+  "train_images": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed/split/train/images",
+  "train_labels": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed/split/train/labelTxt",
+  "train_split_id": "processed-split-train",
+  "ultralytics_data_file": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/artifacts/datasets/dota_obb_4class_tiled_local-v1/ultralytics_data.yaml",
+  "val_images": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed/split/val/images",
+  "val_labels": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed/split/val/labelTxt",
+  "val_split_id": "processed-split-val",
+  "validation": {
+    "train": {
+      "images_dir": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed/split/train/images",
+      "labels_alias": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed/split/train/labels",
+      "labels_alias_status": "created",
+      "labels_dir": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed/split/train/labelTxt",
+      "num_images": 125,
+      "num_labels": 125,
+      "split_name": "train"
+    },
+    "val": {
+      "images_dir": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed/split/val/images",
+      "labels_alias": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed/split/val/labels",
+      "labels_alias_status": "created",
+      "labels_dir": "/Users/omarpiro/ML_DL_Projects/dota_cv/aerial-obb-api/data/processed/split/val/labelTxt",
+      "num_images": 32,
+      "num_labels": 32,
+      "split_name": "val"
+    }
+  }
+}

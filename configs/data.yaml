@@ -1,0 +1,21 @@
+dataset:
+  name: dota_obb_4class_tiled
+  version: local-v1
+  description: Four-class DOTA subset prepared for tiled YOLO OBB experiments.
+  raw_dir: data/raw
+  filtered_dir: data/filtered
+  processed_dir: data/processed
+  train_images: data/processed/split/train/images
+  train_labels: data/processed/split/train/labelTxt
+  val_images: data/processed/split/val/images
+  val_labels: data/processed/split/val/labelTxt
+  test_images: null
+  test_labels: null
+  train_split_id: processed-split-train
+  val_split_id: processed-split-val
+  test_split_id: null
+  class_names:
+    - plane
+    - ship
+    - small-vehicle
+    - large-vehicle

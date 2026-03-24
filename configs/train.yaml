@@ -1,0 +1,24 @@
+run:
+  prefix: obb_tiled
+  initial_weights: yolo11n-obb.pt
+
+training:
+  epochs: 50
+  patience: 15
+  batch: 4
+  imgsz: 1024
+  device: cpu
+  workers: 2
+  pretrained: true
+  optimizer: auto
+  seed: 0
+  deterministic: true
+  save_json: false
+  degrees: 45
+  translate: 0.1
+  scale: 0.6
+  flipud: 0.5
+  fliplr: 0.5
+  mosaic: 1.0
+  lr0: 0.001
+  lrf: 0.01
