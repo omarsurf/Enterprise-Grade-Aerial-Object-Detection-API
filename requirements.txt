@@ -1,2 +1,4 @@
-# Transitional wrapper. Prefer requirements/api-cpu.txt or requirements/dev.txt directly.
+# Transitional wrapper for legacy installs. Use requirements/api-cpu.txt for
+# runtime, requirements/dev.txt for local development, and requirements/train.txt
+# for training workflows.
 -r requirements/dev.txt

@@ -51,10 +51,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/omarpiro/aerial-obb-api"
-Documentation = "https://github.com/omarpiro/aerial-obb-api#readme"
-Repository = "https://github.com/omarpiro/aerial-obb-api"
-Issues = "https://github.com/omarpiro/aerial-obb-api/issues"
+Homepage = "https://github.com/omarsurf/Enterprise-Grade-Aerial-Object-Detection-API"
+Documentation = "https://github.com/omarsurf/Enterprise-Grade-Aerial-Object-Detection-API#readme"
+Repository = "https://github.com/omarsurf/Enterprise-Grade-Aerial-Object-Detection-API"
+Issues = "https://github.com/omarsurf/Enterprise-Grade-Aerial-Object-Detection-API/issues"
 
 [build-system]
 requires = ["setuptools>=61.0"]

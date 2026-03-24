@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python"/>
-  <img src="https://img.shields.io/badge/FastAPI-0.109+-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI"/>
+  <img src="https://img.shields.io/badge/FastAPI-0.135.2-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI"/>
   <img src="https://img.shields.io/badge/YOLO-v11_OBB-00FFFF?style=for-the-badge" alt="YOLO"/>
   <img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"/>
 </p>
@@ -119,7 +119,7 @@ Traditional Box (Imprecise)          Oriented Box (Precise)
 ### 1. Install the CPU-only API environment
 
 ```bash
-git clone <repository>
+git clone https://github.com/omarsurf/Enterprise-Grade-Aerial-Object-Detection-API.git aerial-obb-api
 cd aerial-obb-api
 make install
 ```
