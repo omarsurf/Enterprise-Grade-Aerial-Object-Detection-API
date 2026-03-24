@@ -116,13 +116,22 @@ Traditional Box (Imprecise)          Oriented Box (Precise)
 
 ## Quick Start
 
-### 1. Installation
+### 1. Install the CPU-only API environment
 
 ```bash
 git clone <repository>
 cd aerial-obb-api
 make install
 ```
+
+Equivalent manual install:
+
+```bash
+pip install -r requirements/api-cpu.txt
+pip install -e . --no-deps
+```
+
+The supported runtime flow is driven by `requirements/*.txt`. Running `pip install -e .` alone is not a supported way to choose the CPU/GPU backend.
 
 ### 2. Run the API
 
@@ -145,6 +154,21 @@ curl -X POST "http://localhost:8000/predict" \
 docker build -t aerial-obb-api .
 docker run -p 8000:8000 aerial-obb-api
 ```
+
+The official container image is CPU-only and intended for API inference, not training.
+
+### 5. Development and training environments
+
+```bash
+make dev       # CPU-only dev/test environment
+make train-env # Local training environment
+```
+
+`make train-env` keeps training dependencies separate from the API image and may resolve GPU-capable packages depending on the local machine.
+
+### 6. CI profile
+
+GitHub Actions is intentionally CPU-only for lint, tests, artifact validation, and Docker verification.
 
 ---
 
@@ -196,6 +220,7 @@ docker run -p 8000:8000 aerial-obb-api
 ```
 
 ```bash
+make train-env       # Install the local training environment
 make prepare-data    # Validate dataset structure
 make train           # Train YOLO OBB model
 make evaluate        # Compute validation metrics
@@ -226,6 +251,7 @@ aerial-obb-api/
 │   ├── data.yaml            # Dataset paths
 │   ├── train.yaml           # Training hyperparameters
 │   └── inference.yaml       # Inference settings
+├── requirements/             # CPU API, dev, lint, and training dependency sets
 ├── artifacts/                # ML run tracking
 │   ├── promoted/            # Production model metadata
 │   └── <run_id>/            # Per-run manifests & metrics
@@ -246,7 +272,7 @@ aerial-obb-api/
 | **Validation** | Pydantic v2 |
 | **Image Processing** | OpenCV, NumPy |
 | **Containerization** | Docker |
-| **Code Quality** | Ruff, Pre-commit |
+| **Code Quality** | Ruff |
 | **Testing** | Pytest |
 
 ---
@@ -374,9 +400,12 @@ inference:
 ## Development
 
 ```bash
-make dev                 # Install dev dependencies
+make install             # Install the CPU-only API environment
+make dev                 # Install the CPU-only dev/test environment
+make train-env           # Install the local training environment
 make test                # Run test suite
-make check               # Lint + format check
+make check               # Lint, tests, and artifact validation
+make smoke-inference     # API smoke test
 make validate-artifacts  # Validate ML artifacts
 ```
 

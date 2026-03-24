@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+COPY requirements/ ./requirements/
+RUN pip install --no-cache-dir --user -r requirements/api-cpu.txt
 
 # === Production stage ===
 FROM python:3.11-slim
@@ -36,8 +36,8 @@ COPY --from=builder /root/.local /home/appuser/.local
 ENV PATH=/home/appuser/.local/bin:$PATH
 
 # Create necessary directories BEFORE copying (handles empty directories)
-RUN mkdir -p /app/models /app/outputs/predictions /app/artifacts/promoted \
-    && chown -R appuser:appgroup /app
+RUN mkdir -p /app/models /app/outputs/predictions /app/artifacts/promoted /home/appuser/.config/Ultralytics \
+    && chown -R appuser:appgroup /app /home/appuser
 
 # Copy application code
 COPY --chown=appuser:appgroup app/ ./app/
@@ -54,7 +54,9 @@ USER appuser
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    HOME=/home/appuser \
+    YOLO_CONFIG_DIR=/home/appuser/.config/Ultralytics
 
 # Expose port
 EXPOSE 8000

@@ -1,14 +1,2 @@
-# API Framework
-fastapi>=0.109.0
-uvicorn[standard]>=0.27.0
-python-multipart>=0.0.6
-httpx>=0.25.0
-
-# ML & Computer Vision
-ultralytics>=8.1.0
-opencv-python>=4.9.0
-numpy>=1.24.0
-
-# Validation
-pydantic>=2.5.0
-PyYAML>=6.0.1
+# Transitional wrapper. Prefer requirements/api-cpu.txt or requirements/dev.txt directly.
+-r requirements/dev.txt

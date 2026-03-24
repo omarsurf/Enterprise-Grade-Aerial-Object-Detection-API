@@ -1,4 +1,4 @@
-.PHONY: install dev test test-cov lint format run prepare-data train evaluate promote-model smoke-inference validate-artifacts docker-build docker-run docker-stop clean help
+.PHONY: install dev train-env test test-cov lint format run prepare-data train evaluate promote-model smoke-inference validate-artifacts docker-build docker-run docker-stop docker-logs docker-test clean check help
 
 # Variables
 PYTHON := python3
@@ -12,16 +12,23 @@ SMOKE_FLAGS ?=
 help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-install: ## Install production dependencies
+install: ## Install the CPU-only API environment
 	$(PYTHON) -m venv $(VENV)
 	$(VENV)/bin/pip install --upgrade pip
-	$(VENV)/bin/pip install -r requirements.txt
+	$(VENV)/bin/pip install -r requirements/api-cpu.txt
+	$(VENV)/bin/pip install -e . --no-deps
 
-dev: ## Install development dependencies
+dev: ## Install the CPU-only development and test environment
 	$(PYTHON) -m venv $(VENV)
 	$(VENV)/bin/pip install --upgrade pip
-	$(VENV)/bin/pip install -e ".[dev]"
-	$(VENV)/bin/pre-commit install
+	$(VENV)/bin/pip install -r requirements/dev.txt
+	$(VENV)/bin/pip install -e . --no-deps
+
+train-env: ## Install the local training environment
+	$(PYTHON) -m venv $(VENV)
+	$(VENV)/bin/pip install --upgrade pip
+	$(VENV)/bin/pip install -r requirements/train.txt
+	$(VENV)/bin/pip install -e . --no-deps
 
 test: ## Run tests
 	$(VENV)/bin/pytest tests/ -v --tb=short
@@ -30,11 +37,11 @@ test-cov: ## Run tests with coverage report
 	$(VENV)/bin/pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-report=html
 
 lint: ## Run linter
-	$(VENV)/bin/ruff check app/ tests/
+	$(VENV)/bin/ruff check app/ tests/ scripts/
 
 format: ## Format code
-	$(VENV)/bin/ruff format app/ tests/
-	$(VENV)/bin/ruff check --fix app/ tests/
+	$(VENV)/bin/ruff format app/ tests/ scripts/
+	$(VENV)/bin/ruff check --fix app/ tests/ scripts/
 
 run: ## Run the API locally
 	$(VENV)/bin/uvicorn app.main:app --host 0.0.0.0 --port $(PORT) --reload
@@ -69,8 +76,9 @@ docker-stop: ## Stop Docker containers
 docker-logs: ## Show Docker container logs
 	docker-compose logs -f
 
-docker-test: ## Run tests inside Docker container
-	docker run --rm aerial-obb-api:latest pytest tests/ -v
+docker-test: ## Verify the Docker runtime image
+	docker run --rm aerial-obb-api:latest python -c "import torch; assert torch.version.cuda is None"
+	docker run --rm aerial-obb-api:latest python -c "from app.main import app; print(app.title)"
 
 clean: ## Clean up generated files
 	rm -rf $(VENV)
