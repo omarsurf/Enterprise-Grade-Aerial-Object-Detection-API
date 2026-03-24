@@ -11,5 +11,5 @@
   },
   "results_csv": "runs_obb/dota_tiled_from_pretrained/results.csv",
   "run_id": "dota_tiled_from_pretrained_local_v1",
-  "weights_path": "runs_obb/dota_tiled_from_pretrained/weights/best_tiled.pt"
+  "weights_path": "models/best_tiled.pt"
 }

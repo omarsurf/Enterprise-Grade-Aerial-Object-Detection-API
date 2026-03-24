@@ -27,7 +27,7 @@
   },
   "resolved": {
     "initial_weights": "yolo11n-obb.pt",
-    "source_model_path": "runs_obb/dota_tiled_from_pretrained/weights/best_tiled.pt",
+    "source_model_path": "models/best_tiled.pt",
     "training_output_dir": "runs_obb/dota_tiled_from_pretrained"
   },
   "run": {

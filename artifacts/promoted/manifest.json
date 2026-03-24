@@ -22,7 +22,7 @@
   "promoted_to_service": true,
   "python_version": "unknown",
   "run_id": "dota_tiled_from_pretrained_local_v1",
-  "source_model_path": "runs_obb/dota_tiled_from_pretrained/weights/best_tiled.pt",
+  "source_model_path": "models/best_tiled.pt",
   "tile_size": 1024,
   "train_split_id": "processed-split-train",
   "training_date": "2026-03-23T00:00:00+00:00",
