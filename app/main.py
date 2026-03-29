@@ -234,6 +234,7 @@ async def health_check(response: Response) -> HealthResponse:
 @limiter.limit(RATE_LIMIT_MODEL_INFO)
 async def model_info(
     request: Request,
+    response: Response,
     _auth: Annotated[AuthContext, Depends(require_api_key)],
 ) -> ModelInfoResponse:
     """Returns runtime metadata for the currently served model."""
@@ -256,6 +257,7 @@ async def model_info(
 @limiter.limit(RATE_LIMIT_PREDICT)
 async def predict(
     request: Request,
+    response: Response,
     file: Annotated[UploadFile, File(description="Image to analyze (PNG, JPG, TIFF)")],
     _auth: Annotated[AuthContext, Depends(require_api_key)],
 ) -> PredictionResponse:
@@ -289,6 +291,7 @@ async def predict(
 @limiter.limit(RATE_LIMIT_PREDICT_AND_SAVE)
 async def predict_and_save(
     request: Request,
+    response: Response,
     file: Annotated[UploadFile, File(description="Image to analyze (PNG, JPG, TIFF)")],
     _auth: Annotated[AuthContext, Depends(require_api_key)],
 ) -> PredictionWithSaveResponse:
