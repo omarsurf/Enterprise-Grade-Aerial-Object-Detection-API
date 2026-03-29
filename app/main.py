@@ -1,6 +1,8 @@
 """
-API FastAPI pour la détection OBB sur images aériennes.
+FastAPI API for aerial OBB detection with basic runtime hardening controls.
 """
+
+from __future__ import annotations
 
 import asyncio
 import re
@@ -13,7 +15,16 @@ from typing import Annotated
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, Response, UploadFile, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import JSONResponse
 
 from app.artifacts import build_model_info
@@ -23,13 +34,20 @@ from app.config import (
     API_DESCRIPTION,
     API_TITLE,
     API_VERSION,
+    BUSY_RETRY_AFTER_SECONDS,
     MAX_FILE_SIZE_BYTES,
     MAX_FILE_SIZE_MB,
+    MAX_INFLIGHT_PREDICTIONS,
     MODEL_PATH,
+    RATE_LIMIT_MODEL_INFO,
+    RATE_LIMIT_PREDICT,
+    RATE_LIMIT_PREDICT_AND_SAVE,
     HealthStatus,
     logger,
 )
 from app.inference import detector
+from app.observability import install_observability
+from app.rate_limit import Limiter, RateLimitExceeded
 from app.schemas import (
     ErrorResponse,
     HealthResponse,
@@ -37,34 +55,39 @@ from app.schemas import (
     PredictionResponse,
     PredictionWithSaveResponse,
 )
+from app.security import AuthContext, get_rate_limit_key, require_api_key
 
-# ThreadPoolExecutor pour exécuter l'inférence sans bloquer l'event loop.
-# Le lock du détecteur sérialise l'accès au modèle.
-_executor = ThreadPoolExecutor(max_workers=2)
+_executor = ThreadPoolExecutor(max_workers=MAX_INFLIGHT_PREDICTIONS)
+_prediction_semaphore = asyncio.Semaphore(MAX_INFLIGHT_PREDICTIONS)
+limiter = Limiter(key_func=get_rate_limit_key, default_limits=[], headers_enabled=True)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Gestionnaire de cycle de vie de l'application.
-    Charge le modèle au démarrage.
+    Application lifecycle manager.
+
+    Loads the model on startup and stores the promoted model version for logs.
     """
-    logger.info(f"Démarrage de l'API - Chargement du modèle depuis {MODEL_PATH}")
+    logger.info("Starting API - loading model from %s", MODEL_PATH)
     try:
         detector.load_model()
-        logger.info("Modèle chargé avec succès - API prête")
-    except FileNotFoundError as e:
+        logger.info("Model loaded successfully - API ready")
+    except FileNotFoundError as exc:
         detector.model = None
-        logger.error(f"ERREUR CRITIQUE: {e}")
-        logger.warning("L'API démarrera en mode dégradé - les prédictions échoueront")
-    except Exception as e:  # pragma: no cover - exercised via async lifespan test
+        logger.error("CRITICAL MODEL ERROR: %s", exc)
+        logger.warning("API will start in degraded mode - predictions will fail")
+    except Exception as exc:  # pragma: no cover - exercised in async lifespan test
         detector.model = None
-        logger.exception(f"ERREUR CRITIQUE au chargement du modèle: {e}")
-        logger.warning("L'API démarrera en mode dégradé - les prédictions échoueront")
+        logger.exception("CRITICAL MODEL ERROR during load: %s", exc)
+        logger.warning("API will start in degraded mode - predictions will fail")
+
+    runtime_info = build_model_info(model_loaded=detector.is_loaded())
+    app.state.model_version = runtime_info.get("model_version")
 
     yield
 
-    logger.info("Arrêt de l'API - Nettoyage des ressources")
+    logger.info("Stopping API - cleaning resources")
     _executor.shutdown(wait=True)
 
 
@@ -74,50 +97,34 @@ app = FastAPI(
     description=API_DESCRIPTION,
     lifespan=lifespan,
 )
-
-
-# === Utilitaires ===
+app.state.limiter = limiter
+install_observability(app)
 
 
 def validate_file(file: UploadFile) -> None:
     """
-    Valide le fichier uploadé (extension et MIME type).
+    Validates the uploaded file extension and MIME type.
 
-    Args:
-        file: Fichier uploadé
-
-    Raises:
-        HTTPException: Si le fichier n'est pas valide
+    Some clients send incorrect MIME types, so extension validation is authoritative.
     """
-    # Vérifier l'extension
     filename = file.filename or ""
     ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Extension '{ext}' non supportée. Extensions acceptées: {', '.join(ALLOWED_EXTENSIONS)}",
+            detail=(
+                f"Extension '{ext}' non supportee. "
+                f"Extensions acceptees: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+            ),
         )
 
-    # Vérifier le MIME type (si disponible)
     if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
-        logger.warning(f"MIME type inattendu: {file.content_type} pour {filename}")
-        # On laisse passer avec un warning car certains clients n'envoient pas le bon MIME type
+        logger.warning("Unexpected MIME type %s for %s", file.content_type, filename)
 
 
 async def read_file_with_limit(file: UploadFile) -> bytes:
-    """
-    Lit le fichier avec une limite de taille.
-
-    Args:
-        file: Fichier uploadé
-
-    Returns:
-        Contenu du fichier en bytes
-
-    Raises:
-        HTTPException: Si le fichier est trop grand
-    """
+    """Reads the uploaded file while enforcing the configured max size."""
     contents = await file.read(MAX_FILE_SIZE_BYTES + 1)
 
     if len(contents) > MAX_FILE_SIZE_BYTES:
@@ -130,46 +137,30 @@ async def read_file_with_limit(file: UploadFile) -> bytes:
 
 
 def decode_image(file_bytes: bytes) -> np.ndarray:
-    """
-    Décode une image depuis des bytes.
-
-    Args:
-        file_bytes: Contenu du fichier image
-
-    Returns:
-        Image BGR numpy array
-
-    Raises:
-        HTTPException: Si l'image ne peut pas être décodée
-    """
+    """Decodes an uploaded image from raw bytes."""
     nparr = np.frombuffer(file_bytes, np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
     if image is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Impossible de décoder l'image. Vérifiez que le fichier est une image valide.",
+            detail="Impossible de decoder l'image. Verifiez que le fichier est valide.",
         )
 
     return image
 
 
 def check_model_loaded() -> None:
-    """
-    Vérifie que le modèle est chargé.
-
-    Raises:
-        HTTPException: Si le modèle n'est pas chargé
-    """
+    """Ensures the detector is loaded before accepting prediction work."""
     if not detector.is_loaded():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Service temporairement indisponible. Le modèle n'est pas chargé.",
+            detail="Service temporairement indisponible. Le modele n'est pas charge.",
         )
 
 
 def build_output_filename(original_name: str) -> str:
-    """Construit un nom de fichier de sortie sûr à partir du nom uploadé."""
+    """Builds a safe output filename derived from the uploaded image name."""
     safe_name = (original_name or "image").replace("\\", "/").rsplit("/", 1)[-1]
     base_name = Path(safe_name).stem
     sanitized_name = re.sub(r"[^A-Za-z0-9._-]+", "_", base_name).strip("._")
@@ -183,22 +174,43 @@ def build_output_filename(original_name: str) -> str:
 
 
 def get_runtime_model_info() -> ModelInfoResponse:
-    """Construit la réponse `model-info` à partir du bundle promu."""
-    return ModelInfoResponse(**build_model_info(model_loaded=detector.is_loaded()))
+    """Builds the runtime `model-info` payload from the promoted artifact bundle."""
+    payload = ModelInfoResponse(**build_model_info(model_loaded=detector.is_loaded()))
+    app.state.model_version = payload.model_version
+    return payload
 
 
-# === Endpoints ===
+@asynccontextmanager
+async def prediction_slot():
+    """Provides a fail-fast concurrency slot for expensive inference requests."""
+    try:
+        await asyncio.wait_for(_prediction_semaphore.acquire(), timeout=0.001)
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Inference capacity exhausted. Retry later.",
+            headers={"Retry-After": str(BUSY_RETRY_AFTER_SECONDS)},
+        ) from exc
+
+    try:
+        yield
+    finally:
+        _prediction_semaphore.release()
+
+
+def _error_payload(status_code: int, detail: str) -> dict[str, object]:
+    return {"error": detail, "status_code": status_code}
 
 
 @app.get(
     "/health",
     response_model=HealthResponse,
-    responses={503: {"model": HealthResponse, "description": "Modèle indisponible"}},
+    responses={503: {"model": HealthResponse, "description": "Model unavailable"}},
     summary="Health Check",
-    description="Vérifie l'état de l'API et du modèle.",
+    description="Checks the health of the API and the model slot.",
 )
 async def health_check(response: Response) -> HealthResponse:
-    """Retourne l'état de santé de l'API."""
+    """Returns the service health without requiring authentication."""
     is_loaded = detector.is_loaded()
     response.status_code = status.HTTP_200_OK if is_loaded else status.HTTP_503_SERVICE_UNAVAILABLE
 
@@ -212,11 +224,19 @@ async def health_check(response: Response) -> HealthResponse:
 @app.get(
     "/model-info",
     response_model=ModelInfoResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing or invalid API key"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+    },
     summary="Model Info",
-    description="Expose les métadonnées du modèle promu servi par l'API.",
+    description="Exposes the metadata and traceability of the promoted model.",
 )
-async def model_info() -> ModelInfoResponse:
-    """Retourne l'identité et la traçabilité du modèle servi."""
+@limiter.limit(RATE_LIMIT_MODEL_INFO)
+async def model_info(
+    request: Request,
+    _auth: Annotated[AuthContext, Depends(require_api_key)],
+) -> ModelInfoResponse:
+    """Returns runtime metadata for the currently served model."""
     return get_runtime_model_info()
 
 
@@ -224,31 +244,31 @@ async def model_info() -> ModelInfoResponse:
     "/predict",
     response_model=PredictionResponse,
     responses={
-        400: {"model": ErrorResponse, "description": "Image invalide"},
-        413: {"model": ErrorResponse, "description": "Fichier trop volumineux"},
-        503: {"model": ErrorResponse, "description": "Service indisponible"},
+        400: {"model": ErrorResponse, "description": "Invalid image"},
+        401: {"model": ErrorResponse, "description": "Missing or invalid API key"},
+        413: {"model": ErrorResponse, "description": "File too large"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+        503: {"model": ErrorResponse, "description": "Service unavailable or saturated"},
     },
-    summary="Prédiction OBB",
-    description="Détecte les objets orientés dans une image aérienne.",
+    summary="OBB Prediction",
+    description="Runs tiled OBB detection on an uploaded aerial image.",
 )
+@limiter.limit(RATE_LIMIT_PREDICT)
 async def predict(
-    file: Annotated[UploadFile, File(description="Image à analyser (PNG, JPG, TIFF)")],
+    request: Request,
+    file: Annotated[UploadFile, File(description="Image to analyze (PNG, JPG, TIFF)")],
+    _auth: Annotated[AuthContext, Depends(require_api_key)],
 ) -> PredictionResponse:
-    """
-    Endpoint de prédiction standard.
-
-    - Accepte une image uploadée (max 50MB)
-    - Retourne les détections au format JSON
-    """
+    """Runs prediction and returns detections as JSON."""
     check_model_loaded()
     validate_file(file)
 
     contents = await read_file_with_limit(file)
     image = decode_image(contents)
 
-    # Exécuter l'inférence dans un thread séparé pour ne pas bloquer l'event loop
-    loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(_executor, detector.predict, image)
+    async with prediction_slot():
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(_executor, detector.predict, image)
 
     return result
 
@@ -257,37 +277,37 @@ async def predict(
     "/predict-and-save",
     response_model=PredictionWithSaveResponse,
     responses={
-        400: {"model": ErrorResponse, "description": "Image invalide"},
-        413: {"model": ErrorResponse, "description": "Fichier trop volumineux"},
-        503: {"model": ErrorResponse, "description": "Service indisponible"},
+        400: {"model": ErrorResponse, "description": "Invalid image"},
+        401: {"model": ErrorResponse, "description": "Missing or invalid API key"},
+        413: {"model": ErrorResponse, "description": "File too large"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+        503: {"model": ErrorResponse, "description": "Service unavailable or saturated"},
     },
-    summary="Prédiction OBB avec sauvegarde",
-    description="Détecte les objets et sauvegarde une image annotée.",
+    summary="OBB Prediction With Save",
+    description="Runs tiled OBB detection and saves an annotated image.",
 )
+@limiter.limit(RATE_LIMIT_PREDICT_AND_SAVE)
 async def predict_and_save(
-    file: Annotated[UploadFile, File(description="Image à analyser (PNG, JPG, TIFF)")],
+    request: Request,
+    file: Annotated[UploadFile, File(description="Image to analyze (PNG, JPG, TIFF)")],
+    _auth: Annotated[AuthContext, Depends(require_api_key)],
 ) -> PredictionWithSaveResponse:
-    """
-    Endpoint de prédiction avec sauvegarde de l'image annotée.
-
-    - Accepte une image uploadée (max 50MB)
-    - Sauvegarde l'image avec les détections dessinées
-    - Retourne les détections + le chemin du fichier sauvegardé
-    """
+    """Runs prediction and persists an annotated image under outputs/predictions."""
     check_model_loaded()
     validate_file(file)
 
     contents = await read_file_with_limit(file)
     image = decode_image(contents)
-
-    # Générer un nom de fichier unique et sûr
     output_filename = build_output_filename(file.filename or "image")
 
-    # Exécuter l'inférence dans un thread séparé
-    loop = asyncio.get_running_loop()
-    result, output_path = await loop.run_in_executor(
-        _executor, detector.predict_and_save, image, output_filename
-    )
+    async with prediction_slot():
+        loop = asyncio.get_running_loop()
+        result, output_path = await loop.run_in_executor(
+            _executor,
+            detector.predict_and_save,
+            image,
+            output_filename,
+        )
 
     return PredictionWithSaveResponse(
         image_width=result.image_width,
@@ -298,25 +318,31 @@ async def predict_and_save(
     )
 
 
-# === Exception Handlers ===
-
-
 @app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc: HTTPException):
-    """Gestionnaire pour les HTTPException - préserve le status code."""
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Preserves HTTP status codes while returning the standard JSON envelope."""
     return JSONResponse(
-        status_code=exc.status_code, content={"error": exc.detail, "status_code": exc.status_code}
+        status_code=exc.status_code,
+        content=_error_payload(exc.status_code, str(exc.detail)),
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    """Returns JSON errors when the in-memory rate limit is exceeded."""
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content=_error_payload(status.HTTP_429_TOO_MANY_REQUESTS, "Rate limit exceeded."),
+        headers={"Retry-After": str(BUSY_RETRY_AFTER_SECONDS)},
     )
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc: Exception):
-    """
-    Gestionnaire d'erreurs global pour les exceptions non gérées.
-    Ne masque PAS les HTTPException (gérées séparément).
-    """
-    logger.exception(f"Erreur non gérée: {exc}")
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catches unhandled exceptions without masking explicit HTTP errors."""
+    logger.exception("Unhandled error: %s", exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"error": "Erreur interne du serveur", "status_code": 500},
+        content=_error_payload(status.HTTP_500_INTERNAL_SERVER_ERROR, "Erreur interne du serveur"),
     )

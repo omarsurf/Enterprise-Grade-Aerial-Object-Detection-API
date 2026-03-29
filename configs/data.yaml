@@ -5,6 +5,10 @@ dataset:
   raw_dir: data/raw
   filtered_dir: data/filtered
   processed_dir: data/processed
+  source_train_images: data/filtered/split/train/images
+  source_train_labels: data/filtered/split/train/labelTxt
+  source_val_images: data/filtered/split/val/images
+  source_val_labels: data/filtered/split/val/labelTxt
   train_images: data/processed/split/train/images
   train_labels: data/processed/split/train/labelTxt
   val_images: data/processed/split/val/images
@@ -19,3 +23,8 @@ dataset:
     - ship
     - small-vehicle
     - large-vehicle
+  tiling:
+    tile_size: 1024
+    overlap: 200
+    empty_tile_keep_ratio: 0.10
+    random_seed: 42

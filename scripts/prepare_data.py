@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Validates the local dataset layout and writes a reproducible dataset manifest.
+Builds or validates the local tiled dataset layout and emits a reproducible manifest.
 """
 
 import argparse
+import shutil
 from pathlib import Path
 
 from common import load_yaml_config, resolve_repo_path, write_yaml_config
@@ -15,18 +16,25 @@ from app.artifacts import (  # noqa: E402
     validate_required_keys,
     write_json,
 )
+from app.dataset_tiling import build_tiled_split  # noqa: E402
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Validate dataset paths and emit a dataset manifest."
+        description="Build or validate the tiled dataset layout and emit a dataset manifest."
     )
     parser.add_argument(
         "--config",
         default="configs/data.yaml",
         help="Path to the dataset config YAML file.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["build", "validate"],
+        default="build",
+        help="Build the tiled processed dataset or only validate an existing one.",
     )
     return parser.parse_args()
 
@@ -81,6 +89,51 @@ def validate_split(images_dir: Path, labels_dir: Path, split_name: str) -> dict[
     }
 
 
+def reset_split_output(images_dir: Path, labels_dir: Path) -> None:
+    """Removes a processed split before rebuilding it."""
+    split_dir = images_dir.parent
+    if split_dir != labels_dir.parent:
+        raise ValueError("Images and labels must share the same split directory")
+
+    if split_dir.exists():
+        shutil.rmtree(split_dir)
+
+    images_dir.mkdir(parents=True, exist_ok=True)
+    labels_dir.mkdir(parents=True, exist_ok=True)
+
+
+def build_split(dataset_cfg: dict[str, object], split_name: str) -> dict[str, int]:
+    """Builds one tiled dataset split from filtered source assets."""
+    tiling_cfg = dataset_cfg["tiling"]
+    source_images_dir = resolve_repo_path(str(dataset_cfg[f"source_{split_name}_images"]))
+    source_labels_dir = resolve_repo_path(str(dataset_cfg[f"source_{split_name}_labels"]))
+    output_images_dir = resolve_repo_path(str(dataset_cfg[f"{split_name}_images"]))
+    output_labels_dir = resolve_repo_path(str(dataset_cfg[f"{split_name}_labels"]))
+
+    if not source_images_dir.exists():
+        raise FileNotFoundError(
+            f"Source images directory missing for {split_name}: {source_images_dir}"
+        )
+    if not source_labels_dir.exists():
+        raise FileNotFoundError(
+            f"Source labels directory missing for {split_name}: {source_labels_dir}"
+        )
+
+    reset_split_output(output_images_dir, output_labels_dir)
+
+    return build_tiled_split(
+        source_images_dir=source_images_dir,
+        source_labels_dir=source_labels_dir,
+        output_images_dir=output_images_dir,
+        output_labels_dir=output_labels_dir,
+        class_names=list(dataset_cfg["class_names"]),
+        tile_size=int(tiling_cfg["tile_size"]),
+        overlap=int(tiling_cfg["overlap"]),
+        empty_keep_ratio=float(tiling_cfg["empty_tile_keep_ratio"]),
+        random_seed=int(tiling_cfg["random_seed"]),
+    )
+
+
 def build_ultralytics_data_file(dataset_cfg: dict[str, object], dataset_dir: Path) -> Path:
     processed_root = resolve_repo_path(str(dataset_cfg["processed_dir"]))
     train_images = resolve_repo_path(str(dataset_cfg["train_images"]))
@@ -110,6 +163,13 @@ def main() -> None:
     )
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
+    build_stats = None
+    if args.mode == "build":
+        build_stats = {
+            "train": build_split(dataset_cfg, "train"),
+            "val": build_split(dataset_cfg, "val"),
+        }
+
     train_validation = validate_split(
         resolve_repo_path(str(dataset_cfg["train_images"])),
         resolve_repo_path(str(dataset_cfg["train_labels"])),
@@ -130,6 +190,10 @@ def main() -> None:
         "raw_dir": str(resolve_repo_path(str(dataset_cfg["raw_dir"]))),
         "filtered_dir": str(resolve_repo_path(str(dataset_cfg["filtered_dir"]))),
         "processed_dir": str(resolve_repo_path(str(dataset_cfg["processed_dir"]))),
+        "source_train_images": str(resolve_repo_path(str(dataset_cfg["source_train_images"]))),
+        "source_train_labels": str(resolve_repo_path(str(dataset_cfg["source_train_labels"]))),
+        "source_val_images": str(resolve_repo_path(str(dataset_cfg["source_val_images"]))),
+        "source_val_labels": str(resolve_repo_path(str(dataset_cfg["source_val_labels"]))),
         "train_images": train_validation["images_dir"],
         "train_labels": train_validation["labels_dir"],
         "val_images": val_validation["images_dir"],
@@ -140,6 +204,9 @@ def main() -> None:
         "test_split_id": dataset_cfg.get("test_split_id"),
         "num_train_images": train_validation["num_images"],
         "num_val_images": val_validation["num_images"],
+        "tiling": dataset_cfg["tiling"],
+        "build_mode": args.mode,
+        "build_stats": build_stats,
         "ultralytics_data_file": str(ultralytics_data_file),
         "generated_at": utc_now_iso(),
         "validation": {
@@ -157,6 +224,8 @@ def main() -> None:
 
     print(f"[OK] Dataset manifest written to {manifest_path}")
     print(f"[OK] Ultralytics data file written to {ultralytics_data_file}")
+    if build_stats is not None:
+        print(f"[OK] Build stats: {build_stats}")
 
 
 if __name__ == "__main__":

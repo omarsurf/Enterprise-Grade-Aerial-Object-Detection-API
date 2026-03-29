@@ -1,4 +1,4 @@
-.PHONY: install dev train-env test test-cov lint format run prepare-data train evaluate promote-model smoke-inference validate-artifacts docker-build docker-run docker-stop docker-logs docker-test clean check help
+.PHONY: install dev train-env test test-cov lint format run prepare-data train evaluate promote-model smoke-inference validate-artifacts notebook-check docker-build docker-run docker-stop docker-logs docker-test clean check help
 
 # Variables
 PYTHON := python3
@@ -64,6 +64,9 @@ smoke-inference: ## Run a smoke inference against the promoted API surface
 validate-artifacts: ## Validate dataset/model manifests and promoted metadata
 	$(VENV)/bin/python scripts/validate_artifacts.py --require-promoted-bundle
 
+notebook-check: ## Verify notebook hygiene expectations
+	$(VENV)/bin/pytest tests/test_notebook_hygiene.py -q
+
 docker-build: ## Build Docker image
 	docker build -t aerial-obb-api:latest .
 
@@ -87,4 +90,4 @@ clean: ## Clean up generated files
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
 
-check: lint test validate-artifacts ## Run linter, tests, and artifact validation
+check: lint test validate-artifacts notebook-check ## Run linter, tests, artifact validation, and notebook checks

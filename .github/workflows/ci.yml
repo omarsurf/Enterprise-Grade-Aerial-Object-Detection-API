@@ -42,6 +42,9 @@ jobs:
       - name: Run tests
         run: pytest tests/ --cov=app --cov-report=term-missing --tb=short -q
 
+      - name: Run notebook hygiene checks
+        run: pytest tests/test_notebook_hygiene.py -q
+
       - name: Validate artifact manifests
         run: python scripts/validate_artifacts.py --require-promoted-bundle
 

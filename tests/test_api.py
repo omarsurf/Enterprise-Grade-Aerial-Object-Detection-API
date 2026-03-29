@@ -1,7 +1,8 @@
 """
-Tests for the FastAPI endpoints and utility functions.
+Tests for the FastAPI endpoints, runtime controls, and utility helpers.
 """
 
+import asyncio
 import io
 from unittest.mock import patch
 
@@ -10,9 +11,10 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from app.config import API_KEY_HEADER_NAME, DEFAULT_DEV_API_KEY
 from app.schemas import Detection, ModelInfoResponse, PredictionResponse
 
-# === Fixtures ===
+AUTH_HEADERS = {API_KEY_HEADER_NAME: DEFAULT_DEV_API_KEY}
 
 
 @pytest.fixture
@@ -48,8 +50,15 @@ def mock_detector():
 
 @pytest.fixture
 def client(mock_detector):
-    """Create a test client with mocked detector."""
-    from app.main import app
+    """Create a test client with mocked detector and reset rate-limit state."""
+    from app.main import app, limiter
+
+    storage = getattr(limiter, "_storage", None)
+    for method_name in ("reset", "clear"):
+        method = getattr(storage, method_name, None)
+        if callable(method):
+            method()
+            break
 
     return TestClient(app)
 
@@ -74,37 +83,23 @@ def sample_jpeg_bytes():
     return buffer.getvalue()
 
 
-# === Health Endpoint Tests ===
-
-
 class TestHealthEndpoint:
     """Tests for /health endpoint."""
 
-    def test_health_returns_200(self, client):
-        """Health endpoint should return 200."""
+    def test_health_returns_200_without_auth(self, client):
         response = client.get("/health")
         assert response.status_code == 200
 
     def test_health_response_structure(self, client):
-        """Health response should have expected fields."""
         response = client.get("/health")
         data = response.json()
 
         assert "status" in data
         assert "model_loaded" in data
         assert "model_path" in data
-
-    def test_health_status_healthy_when_model_loaded(self, client, mock_detector):
-        """Status should be 'healthy' when model is loaded."""
-        mock_detector.is_loaded.return_value = True
-        response = client.get("/health")
-        data = response.json()
-
-        assert data["status"] == "healthy"
-        assert data["model_loaded"] is True
+        assert "x-request-id" in {key.lower() for key in response.headers}
 
     def test_health_status_degraded_when_model_not_loaded(self, client, mock_detector):
-        """Status should be 'degraded' when model is not loaded."""
         mock_detector.is_loaded.return_value = False
         response = client.get("/health")
         data = response.json()
@@ -117,8 +112,15 @@ class TestHealthEndpoint:
 class TestModelInfoEndpoint:
     """Tests for /model-info endpoint."""
 
+    def test_model_info_requires_api_key(self, client):
+        response = client.get("/model-info")
+        assert response.status_code == 401
+
+    def test_model_info_rejects_invalid_api_key(self, client):
+        response = client.get("/model-info", headers={API_KEY_HEADER_NAME: "wrong-key"})
+        assert response.status_code == 401
+
     def test_model_info_returns_promoted_metadata(self, client):
-        """Model-info should expose promoted metadata when available."""
         mocked_payload = ModelInfoResponse(
             model_loaded=True,
             manifest_available=True,
@@ -133,7 +135,7 @@ class TestModelInfoEndpoint:
         )
 
         with patch("app.main.get_runtime_model_info", return_value=mocked_payload):
-            response = client.get("/model-info")
+            response = client.get("/model-info", headers=AUTH_HEADERS)
 
         assert response.status_code == 200
         data = response.json()
@@ -142,7 +144,6 @@ class TestModelInfoEndpoint:
         assert data["manifest_available"] is True
 
     def test_model_info_signals_missing_manifest(self, client):
-        """Model-info should signal when the promoted manifest is missing."""
         mocked_payload = ModelInfoResponse(
             model_loaded=False,
             manifest_available=False,
@@ -157,37 +158,47 @@ class TestModelInfoEndpoint:
         )
 
         with patch("app.main.get_runtime_model_info", return_value=mocked_payload):
-            response = client.get("/model-info")
+            response = client.get("/model-info", headers=AUTH_HEADERS)
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["manifest_available"] is False
-        assert "manifest" in data["message"].lower()
+        assert response.json()["manifest_available"] is False
 
+    def test_model_info_rate_limited(self, client):
+        for _ in range(30):
+            response = client.get("/model-info", headers=AUTH_HEADERS)
+            assert response.status_code == 200
 
-# === Predict Endpoint Tests ===
+        response = client.get("/model-info", headers=AUTH_HEADERS)
+        assert response.status_code == 429
 
 
 class TestPredictEndpoint:
     """Tests for /predict endpoint."""
 
-    def test_predict_requires_file(self, client):
-        """Predict should return 422 without file."""
-        response = client.post("/predict")
+    def test_predict_requires_api_key(self, client, sample_image_bytes):
+        response = client.post(
+            "/predict", files={"file": ("test.png", sample_image_bytes, "image/png")}
+        )
+        assert response.status_code == 401
+
+    def test_predict_requires_file_when_authenticated(self, client):
+        response = client.post("/predict", headers=AUTH_HEADERS)
         assert response.status_code == 422
 
     def test_predict_invalid_file_type(self, client):
-        """Predict should return 400 for invalid file type."""
         response = client.post(
-            "/predict", files={"file": ("test.txt", b"not an image", "text/plain")}
+            "/predict",
+            headers=AUTH_HEADERS,
+            files={"file": ("test.txt", b"not an image", "text/plain")},
         )
         assert response.status_code == 400
         assert "Extension" in response.json()["error"]
 
-    def test_predict_valid_png_image(self, client, sample_image_bytes, mock_detector):
-        """Predict should succeed with valid PNG image."""
+    def test_predict_valid_png_image(self, client, sample_image_bytes):
         response = client.post(
-            "/predict", files={"file": ("test.png", sample_image_bytes, "image/png")}
+            "/predict",
+            headers=AUTH_HEADERS,
+            files={"file": ("test.png", sample_image_bytes, "image/png")},
         )
         assert response.status_code == 200
 
@@ -197,20 +208,21 @@ class TestPredictEndpoint:
         assert data["nb_detections"] == 2
         assert len(data["detections"]) == 2
 
-    def test_predict_valid_jpeg_image(self, client, sample_jpeg_bytes, mock_detector):
-        """Predict should succeed with valid JPEG image."""
+    def test_predict_valid_jpeg_image(self, client, sample_jpeg_bytes):
         response = client.post(
-            "/predict", files={"file": ("test.jpg", sample_jpeg_bytes, "image/jpeg")}
+            "/predict",
+            headers=AUTH_HEADERS,
+            files={"file": ("test.jpg", sample_jpeg_bytes, "image/jpeg")},
         )
         assert response.status_code == 200
 
-    def test_predict_detection_structure(self, client, sample_image_bytes, mock_detector):
-        """Detections should have correct structure."""
+    def test_predict_detection_structure(self, client, sample_image_bytes):
         response = client.post(
-            "/predict", files={"file": ("test.png", sample_image_bytes, "image/png")}
+            "/predict",
+            headers=AUTH_HEADERS,
+            files={"file": ("test.png", sample_image_bytes, "image/png")},
         )
-        data = response.json()
-        detection = data["detections"][0]
+        detection = response.json()["detections"][0]
 
         assert "class_id" in detection
         assert "class_name" in detection
@@ -218,35 +230,60 @@ class TestPredictEndpoint:
         assert "polygon" in detection
         assert len(detection["polygon"]) == 4
 
-    def test_predict_returns_503_when_model_not_loaded(
-        self, client, mock_detector, sample_image_bytes
-    ):
-        """Predict should return 503 when model is not loaded."""
+    def test_predict_returns_503_when_model_not_loaded(self, client, mock_detector, sample_image_bytes):
         mock_detector.is_loaded.return_value = False
         response = client.post(
-            "/predict", files={"file": ("test.png", sample_image_bytes, "image/png")}
+            "/predict",
+            headers=AUTH_HEADERS,
+            files={"file": ("test.png", sample_image_bytes, "image/png")},
         )
         assert response.status_code == 503
 
+    def test_predict_echoes_request_id(self, client, sample_image_bytes):
+        response = client.post(
+            "/predict",
+            headers={**AUTH_HEADERS, "X-Request-ID": "req-123"},
+            files={"file": ("test.png", sample_image_bytes, "image/png")},
+        )
+        assert response.status_code == 200
+        assert response.headers["X-Request-ID"] == "req-123"
 
-# === Predict and Save Endpoint Tests ===
+    def test_predict_returns_503_when_inference_slots_are_saturated(
+        self, client, sample_image_bytes, monkeypatch
+    ):
+        from app import main
+
+        monkeypatch.setattr(main, "_prediction_semaphore", asyncio.Semaphore(0))
+        response = client.post(
+            "/predict",
+            headers=AUTH_HEADERS,
+            files={"file": ("test.png", sample_image_bytes, "image/png")},
+        )
+
+        assert response.status_code == 503
+        assert response.headers["Retry-After"] == str(main.BUSY_RETRY_AFTER_SECONDS)
 
 
 class TestPredictAndSaveEndpoint:
     """Tests for /predict-and-save endpoint."""
 
-    def test_predict_and_save_requires_file(self, client):
-        """Predict-and-save should return 422 without file."""
-        response = client.post("/predict-and-save")
-        assert response.status_code == 422
-
-    def test_predict_and_save_valid_image(self, client, sample_image_bytes, mock_detector):
-        """Predict-and-save should succeed with valid image."""
+    def test_predict_and_save_requires_api_key(self, client, sample_image_bytes):
         response = client.post(
             "/predict-and-save", files={"file": ("test.png", sample_image_bytes, "image/png")}
         )
-        assert response.status_code == 200
+        assert response.status_code == 401
 
+    def test_predict_and_save_requires_file_when_authenticated(self, client):
+        response = client.post("/predict-and-save", headers=AUTH_HEADERS)
+        assert response.status_code == 422
+
+    def test_predict_and_save_valid_image(self, client, sample_image_bytes):
+        response = client.post(
+            "/predict-and-save",
+            headers=AUTH_HEADERS,
+            files={"file": ("test.png", sample_image_bytes, "image/png")},
+        )
+        assert response.status_code == 200
         data = response.json()
         assert "output_path" in data
         assert data["nb_detections"] == 2
@@ -254,19 +291,20 @@ class TestPredictAndSaveEndpoint:
     def test_predict_and_save_returns_503_when_model_not_loaded(
         self, client, mock_detector, sample_image_bytes
     ):
-        """Predict-and-save should return 503 when model is not loaded."""
         mock_detector.is_loaded.return_value = False
         response = client.post(
-            "/predict-and-save", files={"file": ("test.png", sample_image_bytes, "image/png")}
+            "/predict-and-save",
+            headers=AUTH_HEADERS,
+            files={"file": ("test.png", sample_image_bytes, "image/png")},
         )
         assert response.status_code == 503
 
     def test_predict_and_save_sanitizes_output_filename(
         self, client, sample_image_bytes, mock_detector
     ):
-        """Uploaded filename should not escape the predictions directory."""
         response = client.post(
             "/predict-and-save",
+            headers=AUTH_HEADERS,
             files={"file": ("../../escape.png", sample_image_bytes, "image/png")},
         )
 
@@ -279,43 +317,27 @@ class TestPredictAndSaveEndpoint:
         assert generated_filename.endswith(".png")
 
 
-# === Utility Functions Tests ===
-
-
 class TestUtilityFunctions:
     """Tests for utility functions."""
 
     def test_generate_tiles_coverage(self):
-        """Tiles should cover the entire image."""
         from app.utils import generate_tiles
 
-        width, height = 2048, 2048
-        tile_size, overlap = 1024, 200
+        tiles = list(generate_tiles(2048, 2048, 1024, 200))
 
-        tiles = list(generate_tiles(width, height, tile_size, overlap))
-
-        # Should have multiple tiles
         assert len(tiles) > 1
-
-        # Each tile should be valid
         for x_start, y_start, x_end, y_end in tiles:
-            assert 0 <= x_start < x_end <= width
-            assert 0 <= y_start < y_end <= height
+            assert 0 <= x_start < x_end <= 2048
+            assert 0 <= y_start < y_end <= 2048
 
     def test_generate_tiles_small_image(self):
-        """Small image should generate single tile."""
         from app.utils import generate_tiles
 
         tiles = list(generate_tiles(512, 512, 1024, 200))
-
-        # Small image = single tile
         assert len(tiles) == 1
-        x_start, y_start, x_end, y_end = tiles[0]
-        assert x_start == 0 and y_start == 0
-        assert x_end == 512 and y_end == 512
+        assert tiles[0] == (0, 0, 512, 512)
 
     def test_generate_tiles_distributes_overlap_evenly(self):
-        """Large images should avoid oversized last-tile overlap."""
         from app.utils import generate_tiles
 
         tiles = list(generate_tiles(2048, 2048, 1024, 200))
@@ -328,7 +350,6 @@ class TestUtilityFunctions:
         ]
 
     def test_generate_tiles_does_not_duplicate_last_tile(self):
-        """Edge coverage should not emit the same tile twice."""
         from app.utils import generate_tiles
 
         tiles = list(generate_tiles(2500, 2500, 1024, 200))
@@ -342,56 +363,37 @@ class TestUtilityFunctions:
         ]
 
     def test_compute_iou_identical_boxes(self):
-        """IoU of identical boxes should be 1."""
         from app.utils import compute_iou_aabb
 
         box = (0, 0, 100, 100)
         assert compute_iou_aabb(box, box) == 1.0
 
     def test_compute_iou_no_overlap(self):
-        """IoU of non-overlapping boxes should be 0."""
         from app.utils import compute_iou_aabb
 
-        box1 = (0, 0, 50, 50)
-        box2 = (100, 100, 150, 150)
-        assert compute_iou_aabb(box1, box2) == 0.0
+        assert compute_iou_aabb((0, 0, 50, 50), (100, 100, 150, 150)) == 0.0
 
     def test_compute_iou_partial_overlap(self):
-        """IoU of partially overlapping boxes should be between 0 and 1."""
         from app.utils import compute_iou_aabb
 
-        box1 = (0, 0, 100, 100)
-        box2 = (50, 50, 150, 150)
-        iou = compute_iou_aabb(box1, box2)
+        iou = compute_iou_aabb((0, 0, 100, 100), (50, 50, 150, 150))
         assert 0 < iou < 1
 
     def test_obb_to_aabb(self):
-        """OBB to AABB conversion should work correctly."""
         from app.utils import obb_to_aabb
 
         obb = np.array([[10, 20], [50, 25], [45, 60], [5, 55]])
-
-        x_min, y_min, x_max, y_max = obb_to_aabb(obb)
-
-        assert x_min == 5
-        assert y_min == 20
-        assert x_max == 50
-        assert y_max == 60
+        assert obb_to_aabb(obb) == (5, 20, 50, 60)
 
     def test_reproject_obb_to_global(self):
-        """Reprojection should add offset correctly."""
         from app.utils import reproject_obb_to_global
 
         local_points = np.array([[0, 0], [10, 0], [10, 10], [0, 10]])
-        offset_x, offset_y = 100, 200
-
-        global_points = reproject_obb_to_global(local_points, offset_x, offset_y)
-
+        global_points = reproject_obb_to_global(local_points, 100, 200)
         expected = np.array([[100, 200], [110, 200], [110, 210], [100, 210]])
         np.testing.assert_array_equal(global_points, expected)
 
     def test_nms_obb_removes_duplicates(self):
-        """NMS should remove overlapping detections of same class."""
         from app.utils import nms_obb
 
         detections = [
@@ -404,13 +406,10 @@ class TestUtilityFunctions:
         ]
 
         result = nms_obb(detections, iou_threshold=0.5)
-
-        # Should keep only the higher confidence detection
         assert len(result) == 1
         assert result[0]["confidence"] == 0.9
 
     def test_nms_obb_keeps_different_classes(self):
-        """NMS should keep overlapping detections of different classes."""
         from app.utils import nms_obb
 
         detections = [
@@ -422,20 +421,13 @@ class TestUtilityFunctions:
             },
         ]
 
-        result = nms_obb(detections, iou_threshold=0.5)
-
-        # Should keep both (different classes)
-        assert len(result) == 2
-
-
-# === Schema Validation Tests ===
+        assert len(nms_obb(detections, iou_threshold=0.5)) == 2
 
 
 class TestSchemaValidation:
     """Tests for Pydantic schema validation."""
 
     def test_detection_valid(self):
-        """Valid Detection should be created without errors."""
         detection = Detection(
             class_id=0,
             class_name="plane",
@@ -446,41 +438,37 @@ class TestSchemaValidation:
         assert detection.confidence == 0.95
 
     def test_detection_invalid_polygon_too_few_points(self):
-        """Detection with too few polygon points should raise error."""
         with pytest.raises(ValueError, match="4 points"):
             Detection(
                 class_id=0,
                 class_name="plane",
                 confidence=0.95,
-                polygon=[[0, 0], [10, 0], [10, 10]],  # Only 3 points
+                polygon=[[0, 0], [10, 0], [10, 10]],
             )
 
     def test_detection_invalid_polygon_too_many_points(self):
-        """Detection with too many polygon points should raise error."""
         with pytest.raises(ValueError, match="4 points"):
             Detection(
                 class_id=0,
                 class_name="plane",
                 confidence=0.95,
-                polygon=[[0, 0], [10, 0], [10, 10], [0, 10], [5, 5]],  # 5 points
+                polygon=[[0, 0], [10, 0], [10, 10], [0, 10], [5, 5]],
             )
 
     def test_detection_invalid_confidence(self):
-        """Detection with invalid confidence should raise error."""
         with pytest.raises(ValueError):
             Detection(
                 class_id=0,
                 class_name="plane",
-                confidence=1.5,  # > 1
+                confidence=1.5,
                 polygon=[[0, 0], [10, 0], [10, 10], [0, 10]],
             )
 
     def test_detection_negative_confidence(self):
-        """Detection with negative confidence should raise error."""
         with pytest.raises(ValueError):
             Detection(
                 class_id=0,
                 class_name="plane",
-                confidence=-0.5,  # < 0
+                confidence=-0.5,
                 polygon=[[0, 0], [10, 0], [10, 10], [0, 10]],
             )

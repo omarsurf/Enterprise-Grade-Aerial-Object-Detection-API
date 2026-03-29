@@ -13,6 +13,12 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=INFO
+      - AERIAL_API_KEYS=local-dev-key
+      - RATE_LIMIT_PREDICT=10/minute
+      - RATE_LIMIT_PREDICT_AND_SAVE=5/minute
+      - RATE_LIMIT_MODEL_INFO=30/minute
+      - MAX_INFLIGHT_PREDICTIONS=2
+      - BUSY_RETRY_AFTER_SECONDS=15
       - CONFIDENCE_THRESHOLD=0.55
       - NMS_IOU_THRESHOLD=0.5
       - TILE_SIZE=1024

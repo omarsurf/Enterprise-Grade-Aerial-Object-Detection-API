@@ -40,6 +40,7 @@ def run_mock_smoke_test(image: np.ndarray) -> None:
     import cv2
     from fastapi.testclient import TestClient
 
+    from app.config import API_KEY_HEADER_NAME, DEFAULT_DEV_API_KEY
     from app.main import app
     from app.schemas import Detection, ModelInfoResponse, PredictionResponse
 
@@ -84,14 +85,16 @@ def run_mock_smoke_test(image: np.ndarray) -> None:
         mock_detector.is_loaded.return_value = True
         mock_detector.predict.return_value = mocked_prediction
         client = TestClient(app)
+        headers = {API_KEY_HEADER_NAME: DEFAULT_DEV_API_KEY}
 
         response = client.post(
             "/predict",
+            headers=headers,
             files={"file": ("smoke.png", buffer.tobytes(), "image/png")},
         )
         assert response.status_code == 200, response.text
 
-        info_response = client.get("/model-info")
+        info_response = client.get("/model-info", headers=headers)
         assert info_response.status_code == 200, info_response.text
         assert info_response.json()["manifest_available"] is True
 
